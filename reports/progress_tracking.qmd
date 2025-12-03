@@ -1,0 +1,252 @@
+---
+title: "Progress Tracking"
+author: "User"
+format: html
+---
+
+# Introduction
+
+This document tracks the results and code for the data visualization reports project.
+
+## Session Info
+
+```{r}
+sessionInfo()
+```
+
+## Import Data
+
+```{r}
+library(sf)
+library(dplyr)
+
+# Define path to shapefile
+shp_path <- "../data/raw/村(里)界(TWD97經緯度)1141031/VILLAGE_NLSC_11401031.shp"
+
+# Read shapefile
+village_sf <- st_read(shp_path)
+print(village_sf)
+```
+
+```{r}
+# Filter to keep only Taiwan main island (exclude offshore counties)
+village_sf_main <- village_sf %>%
+  filter(!COUNTYNAME %in% c("連江縣", "金門縣", "澎湖縣"))
+
+# Check the data
+print(village_sf_main)
+plot(st_geometry(village_sf_main))
+```
+
+## Using ggplot
+
+```{r}
+library(ggplot2)
+
+# Plot using ggplot2
+ggplot(data = village_sf_main) +
+  geom_sf() +
+  theme_minimal() +
+  labs(title = "Taiwan Main Island Villages",
+       subtitle = "Village boundaries (excluding offshore islands)")
+```
+
+### Simplify but keep topology
+
+```{r}
+library(rmapshaper)
+
+# Simplify geometries while preserving topology
+# keep parameter controls how much detail to retain (0-1, where 1 = no simplification)
+village_sf_simplified <- ms_simplify(village_sf_main, keep = 0.05, keep_shapes = TRUE)
+
+# Compare file sizes
+cat("Original features:", nrow(village_sf_main), "\n")
+cat("Simplified features:", nrow(village_sf_simplified), "\n")
+```
+
+```{r}
+# Plot simplified version
+ggplot(data = village_sf_simplified) +
+  geom_sf() +
+  theme_minimal() +
+  labs(title = "Simplified Taiwan Main Island Villages",
+       subtitle = "Topology-preserving simplification (5% detail retained)")
+```
+
+
+### Set ggplot limit based on bbox
+
+Instead of cropping the data, we can also use the bounding box to set the plot limits while keeping all the data intact. This approach is useful when you want to zoom into a specific region without modifying the underlying spatial data.
+
+```{r}
+# Define bounding box for Taiwan main island
+taiwan_bbox <- c(
+  xmin = 119.0,
+  ymin = 21.5,
+  xmax = 122.1,
+  ymax = 25.5
+)
+
+# Plot with coordinate limits set by the bounding box
+ggplot(data = village_sf_simplified) +
+  geom_sf() +
+  coord_sf(xlim = c(taiwan_bbox["xmin"], taiwan_bbox["xmax"]),
+           ylim = c(taiwan_bbox["ymin"], taiwan_bbox["ymax"])) +
+  theme_minimal() +
+  labs(title = "Taiwan Main Island Villages - Zoomed View",
+       subtitle = "Using coord_sf limits instead of cropping data")
+```
+
+## Village Household and Population Data
+
+```{r}
+# Import village household and population statistics
+village_stats <- read.csv("../data/raw/村(里)界(TWD97經緯度)1141031/village_household_population_statistics_2022.csv")
+
+# Check the data structure
+str(village_stats)
+head(village_stats)
+```
+
+### Solitary Household Share
+
+Calculate the proportion of single-person households (單獨生活戶) relative to total households for each village.
+
+```{r}
+# Calculate solitary household share
+village_stats <- village_stats %>%
+  mutate(
+    # Total households
+    total_households = 共同生活戶_戶數 + 共同事業戶_戶數 + 單獨生活戶_戶數,
+    
+    # Solitary household share (proportion)
+    solitary_share = 單獨生活戶_戶數 / total_households,
+    
+    # Solitary household percentage
+    solitary_pct = solitary_share * 100
+  )
+
+# Summary statistics
+summary(village_stats$solitary_pct)
+
+# Show top 10 villages with highest solitary household share
+village_stats %>%
+  select(區域別, 村里名稱, 單獨生活戶_戶數, total_households, solitary_pct) %>%
+  arrange(desc(solitary_pct)) %>%
+  head(10)
+```
+
+## Choropleth Map
+
+Join the spatial data with household statistics and create a choropleth map showing the solitary household percentage.
+
+```{r}
+# Join spatial data with household statistics
+# First, check the column names to find the join key
+names(village_sf_simplified)
+names(village_stats)
+
+# Join by village name (VILLNAME in shapefile, 村里名稱 in CSV)
+village_map_data <- village_sf_simplified %>%
+  left_join(village_stats, by = c("VILLNAME" = "村里名稱"))
+
+# Check if join was successful
+cat("Rows in spatial data:", nrow(village_sf_simplified), "\n")
+cat("Rows after join:", nrow(village_map_data), "\n")
+cat("Rows with solitary_pct data:", sum(!is.na(village_map_data$solitary_pct)), "\n")
+
+# Create choropleth map
+ggplot(data = village_map_data) +
+  geom_sf(aes(fill = solitary_pct), color = NA) +
+  scale_fill_viridis_c(
+    name = "Solitary\nHousehold %",
+    option = "plasma",
+    na.value = "grey90"
+  ) +
+  coord_sf(xlim = c(taiwan_bbox["xmin"], taiwan_bbox["xmax"]),
+           ylim = c(taiwan_bbox["ymin"], taiwan_bbox["ymax"])) +
+  theme_minimal() +
+  labs(
+    title = "Solitary Household Share by Village",
+    subtitle = "Taiwan Main Island, 2022",
+    caption = "Data source: 政府資料開放平臺"
+  ) +
+  theme(
+    legend.position = "right",
+    plot.title = element_text(face = "bold", size = 14),
+    plot.subtitle = element_text(size = 11)
+  )
+```
+
+### Choropleth map with solitary_pct cut to 4 levels
+
+```{r}
+library(scales)
+library(ggrepel)
+
+# Bin solitary_pct into four roughly equal-count groups
+village_map_data <- village_map_data %>%
+  mutate(
+    solitary_pct_level = cut_number(solitary_pct, n = 4, na.rm = TRUE)
+  )
+
+
+
+ggplot(data = village_map_data) +
+  geom_sf(aes(fill = solitary_pct_level), color = NA) +
+  scale_fill_brewer(
+    palette = "YlOrRd",
+    na.value = "grey90",
+    name = "Solitary %\n(4 bins)"
+  ) +
+  coord_sf(xlim = c(taiwan_bbox["xmin"], taiwan_bbox["xmax"]),
+           ylim = c(taiwan_bbox["ymin"], taiwan_bbox["ymax"])) +
+  theme_minimal() +
+  labs(
+    title = "Solitary Household Share (Binned)",
+    subtitle = "Four equal-count bins of solitary_pct",
+    caption = "Data source: 政府資料開放平臺"
+  ) +
+  theme(
+    legend.position = "right",
+    plot.title = element_text(face = "bold", size = 14),
+    plot.subtitle = element_text(size = 11)
+  )
+```
+
+### Plotly choropleth map (DON'T Run)
+
+```{r}
+#| eval: false
+#| include: false
+library(plotly)
+
+# Prepare data for native plotly (no ggplotly)
+village_map_data_plotly <- village_map_data %>%
+  st_make_valid() %>%
+  st_collection_extract("POLYGON") %>%
+  mutate(
+    hover_text = paste0(
+      "County: ", COUNTYNAME, "<br>",
+      "Town: ", TOWNNAME, "<br>",
+      "Village: ", VILLNAME, "<br>",
+      "Solitary %: ", round(solitary_pct, 2)
+    )
+  )
+
+plot_ly(
+  data = village_map_data_plotly,
+  split = ~VILLNAME,
+  color = ~solitary_pct,
+  colors = viridisLite::plasma(20),
+  text = ~hover_text
+) %>%
+  add_sf(hoverinfo = "text", stroke = I(NA)) %>%
+  colorbar(title = "Solitary<br>Household %") %>%
+  layout(
+    title = "Solitary Household Share by Village (Interactive)",
+    legend = list(title = list(text = "Solitary %")),
+    margin = list(l = 0, r = 0, t = 50, b = 0)
+  )
+```
