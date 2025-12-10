@@ -1,0 +1,88 @@
+---
+title: "New Taipei Income per Household (Tax Year 2022)"
+author: "User"
+format: html
+---
+
+This notebook documents how the per-village average comprehensive income per household is calculated from `data/income_distribution_by_village_2022_newTaipei.csv` (see codebook: `codebook/income_distribution_by_village_2022_newTaipei.md`).
+
+## Setup
+
+```{r}
+library(dplyr)
+library(readr)
+```
+
+## Load data
+
+CSV includes a UTF-8 BOM; read with the matching encoding and keep the English headers provided in the codebook.
+
+```{r}
+income_path <- "../data/income_distribution_by_village_2022_newTaipei.csv"
+income_raw <- read.csv(income_path, check.names = FALSE, fileEncoding = "UTF-8-BOM")
+
+dglimpse <- function(df) {
+  tibble::tibble(
+    n_rows = nrow(df),
+    n_cols = ncol(df),
+    sample_region = df$`Region Name`[1]
+  )
+}
+dglimpse(income_raw)
+```
+
+## Calculate mean income per household
+
+Rename columns to concise snake_case and compute `mean_income_calc = total_income / tax_units`. The dataset already reports a mean; we calculate it to verify consistency.
+
+```{r}
+income_ntpc <- income_raw %>%
+  rename(
+    region = `Region Name`,
+    village = `Village Name`,
+    tax_units = `Tax Units (Households)`,
+    total_income = `Total Comprehensive Income`,
+    mean_income_reported = `Mean Income`
+  ) %>%
+  mutate(mean_income_calc = total_income / tax_units)
+
+income_ntpc %>%
+  select(region, village, tax_units, total_income, mean_income_reported, mean_income_calc) %>%
+  slice_head(n = 5)
+```
+
+## Validate reported mean vs. calculated mean
+
+Check that the reported mean matches the calculation across all villages.
+
+```{r}
+income_ntpc %>%
+  mutate(diff = mean_income_reported - mean_income_calc) %>%
+  summarize(
+    max_abs_diff = max(abs(diff), na.rm = TRUE),
+    mean_abs_diff = mean(abs(diff), na.rm = TRUE)
+  )
+```
+
+## Top and bottom villages by calculated mean income
+
+Review extremes to understand the spread.
+
+```{r}
+# Top 5
+income_ntpc %>%
+  arrange(desc(mean_income_calc)) %>%
+  select(region, village, tax_units, mean_income_calc, mean_income_reported) %>%
+  slice_head(n = 5)
+
+# Bottom 5
+income_ntpc %>%
+  arrange(mean_income_calc) %>%
+  select(region, village, tax_units, mean_income_calc, mean_income_reported) %>%
+  slice_head(n = 5)
+```
+
+## Notes
+
+- Monetary unit is not stated in the CSV; based on similar MOF tables it is likely thousand NTD—confirm with source metadata.
+- If differences appear between reported and calculated means, revisit unit assumptions and rounding rules from the source.
