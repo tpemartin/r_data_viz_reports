@@ -1,7 +1,7 @@
 # Codebook: Income Distribution by Village (Tax Year 2022, New Taipei City)
 
 ## Dataset Information
-- **Path**: `data/raw/income_distribution_by_village_2022.csv`
+- **Path**: `data/income_distribution_by_village_2022_newTaipei.csv`
 - **Source**: [政府資料開放平臺 - dataset 17975](https://data.gov.tw/dataset/17975) (exported CSV)
 - **Tax Year**: 2022 (ROC 111)
 - **Geographic Coverage**: All villages/里 across Taiwan (and outlying islands)
@@ -24,10 +24,13 @@
 | Standard Deviation | 標準差 | Numeric | Std. dev. of comprehensive income per tax unit |
 | Coefficient of Variation | 變異係數 | Numeric | `標準差 / 平均數` |
 
+### Derived in analysis
+- `mean_income_calc`: `Total Comprehensive Income / Tax Units (Households)`; used to confirm the reported mean.
+
 ## Usage Notes
 - Monetary unit in the source is not stated in the CSV; it is commonly thousand NTD in MOF tax tables—confirm with the dataset page.
 - Values for county/district/village are in Chinese; join to spatial boundaries using consistent naming or codes if available elsewhere.
 - CSV includes a UTF-8 BOM; some parsers may need `encoding=\"utf-8-sig\"`.
 
 ## Last Updated
-- Generated: 2025-12-10
+- Updated: 2024-12-10

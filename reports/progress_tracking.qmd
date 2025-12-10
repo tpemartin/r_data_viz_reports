@@ -79,6 +79,42 @@ ggplot(data = village_sf_simplified) +
 
 Instead of cropping the data, we can also use the bounding box to set the plot limits while keeping all the data intact. This approach is useful when you want to zoom into a specific region without modifying the underlying spatial data.
 
+## Income distribution: New Taipei (2022)
+
+Compute per-village average comprehensive income per household using the New Taipei subset CSV.
+
+```{r}
+library(dplyr)
+
+income_path <- "../data/income_distribution_by_village_2022_newTaipei.csv"
+income_raw <- read.csv(income_path, check.names = FALSE, fileEncoding = "UTF-8-BOM")
+
+income_ntpc <- income_raw %>%
+  rename(
+    region = `Region Name`,
+    village = `Village Name`,
+    tax_units = `Tax Units (Households)`,
+    total_income = `Total Comprehensive Income`,
+    mean_income_reported = `Mean Income`
+  ) %>%
+  mutate(mean_income_calc = total_income / tax_units)
+
+income_ntpc %>%
+  select(region, village, tax_units, total_income, mean_income_reported, mean_income_calc) %>%
+  slice_head(n = 5)
+```
+
+Confirm the calculated mean matches the reported mean across all villages (differences are zero when the unit assumptions align).
+
+```{r}
+income_ntpc %>%
+  mutate(diff = mean_income_reported - mean_income_calc) %>%
+  summarize(
+    max_abs_diff = max(abs(diff), na.rm = TRUE),
+    mean_abs_diff = mean(abs(diff), na.rm = TRUE)
+  )
+```
+
 ```{r}
 # Define bounding box for Taiwan main island
 taiwan_bbox <- c(
