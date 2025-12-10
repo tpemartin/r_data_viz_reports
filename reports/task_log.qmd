@@ -1,0 +1,85 @@
+---
+title: "Task Log"
+format: html
+editor: visual
+---
+
+# Task 1: Plot Village Boundaries
+
+Load the village boundary shapefile and plot it.
+
+```{r}
+library(sf)
+library(ggplot2)
+library(dplyr)
+library(readr)
+
+# Ensure UTF-8 handling for paths with Chinese characters
+Sys.setlocale("LC_CTYPE", "en_US.UTF-8")
+
+# Define path to shapefile
+shp_path <- "../data/raw/村(里)界(TWD97經緯度)1141031/VILLAGE_NLSC_11401031.shp"
+
+# Read shapefile
+village_shp <- st_read(shp_path)
+
+# Plot
+ggplot(data = village_shp) +
+  geom_sf() +
+  theme_minimal() +
+  labs(title = "Village Boundaries (TWD97)")
+```
+
+# Task 2: Import 2022 Village Household & Population Data
+
+Load the 2022 household and population dataset (see `codebook/village_household_population_statistics.md` for field definitions) and create simple totals for quick checks.
+
+```{r}
+# Ensure UTF-8 path/column handling for Chinese names
+Sys.setlocale("LC_CTYPE", "en_US.UTF-8")
+
+pop_path <- "../data/raw/村(里)界(TWD97經緯度)1141031/village_household_population_statistics_2022.csv"
+
+village_pop <- read_csv(
+  pop_path,
+  locale = locale(encoding = "UTF-8"),
+  show_col_types = FALSE
+)
+
+village_pop <- village_pop %>%
+  mutate(
+    total_households = 共同生活戶_戶數 + 共同事業戶_戶數 + 單獨生活戶_戶數,
+    total_population = 共同生活戶_男 + 共同事業戶_男 + 單獨生活戶_男 +
+      共同生活戶_女 + 共同事業戶_女 + 單獨生活戶_女
+  )
+
+village_pop %>%
+  select(統計年, 區域別代碼, 區域別, 村里名稱, total_households, total_population) %>%
+  slice_head(n = 5)
+```
+
+# Task 3: Choropleth of Total Population by Village
+
+Join the population data to the village boundaries using the village code (`VILLCODE` ↔ `區域別代碼`) and plot total population.
+
+```{r}
+pop_with_code <- village_pop %>%
+  mutate(region_code = formatC(區域別代碼, format = "f", digits = 0))
+
+village_map <- village_shp %>%
+  left_join(pop_with_code, by = c("VILLCODE" = "region_code"))
+
+ggplot(village_map) +
+  geom_sf(aes(fill = total_population), color = NA) +
+  scale_fill_viridis_c(option = "magma", trans = "sqrt", na.value = "grey90") +
+  coord_sf(
+    xlim = c(119.0, 122.1),
+    ylim = c(21.5, 25.5),
+    expand = FALSE
+  ) +
+  theme_minimal() +
+  labs(
+    title = "Total Population by Village (2022)",
+    fill = "Total population"
+  )
+```
