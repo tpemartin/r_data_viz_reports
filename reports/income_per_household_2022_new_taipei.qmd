@@ -1,7 +1,22 @@
 ---
 title: "New Taipei Income per Household (Tax Year 2022)"
 author: "User"
-format: html
+format:
+  html:
+    toc: false
+header-includes:
+  - |
+    <style>
+    @font-face {
+      font-family: 'Noto Sans TC';
+      src: url('../font/NotoSansTC-Regular.ttf') format('truetype');
+      font-weight: 400;
+      font-style: normal;
+    }
+    body {
+      font-family: 'Noto Sans TC', 'Noto Sans', sans-serif;
+    }
+    </style>
 ---
 
 This notebook documents how the per-village average comprehensive income per household is calculated from `data/income_distribution_by_village_2022_newTaipei.csv` (see codebook: `codebook/income_distribution_by_village_2022_newTaipei.md`).
@@ -14,6 +29,12 @@ library(readr)
 library(sf)
 library(ggplot2)
 library(stringr)
+if (!requireNamespace("showtext", quietly = TRUE)) {
+  stop("Please install showtext: install.packages('showtext')")
+}
+library(showtext)
+font_add("Noto Sans TC", "../font/NotoSansTC-Regular.ttf")
+showtext_auto()
 ```
 
 ## Load data
@@ -166,6 +187,7 @@ ggplot(income_map) +
   theme(
     legend.position = "right",
     plot.title = element_text(face = "bold"),
-    plot.margin = margin(10, 30, 10, 30)
+    plot.margin = margin(10, 30, 10, 30),
+    text = element_text(family = "Noto Sans TC")
   )
 ```
