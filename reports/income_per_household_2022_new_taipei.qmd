@@ -29,6 +29,8 @@ library(readr)
 library(sf)
 library(ggplot2)
 library(stringr)
+library(maptiles)
+library(tidyterra)
 if (!requireNamespace("showtext", quietly = TRUE)) {
   stop("Please install showtext: install.packages('showtext')")
 }
@@ -183,6 +185,60 @@ ggplot(income_map) +
     subtitle = "Villages grouped into terciles of calculated mean income"
   ) +
   coord_sf(clip = "off") +
+  theme_void() +
+  theme(
+    legend.position = "right",
+    plot.title = element_text(face = "bold"),
+    plot.margin = margin(10, 30, 10, 30),
+    text = element_text(family = "Noto Sans TC")
+  )
+```
+
+## Basemap overlay (Stadia Maps Alidade Smooth + choropleth)
+
+Requires internet access and a Stadia API key set as env var `STADIA_KEY`. Tiles are fetched via `{maptiles}` and overlaid with the same mean-income terciles (alpha = 0.4).
+
+```{r}
+stadia_key <- Sys.getenv("STADIA_KEY")
+if (stadia_key == "") {
+  stop("Set STADIA_KEY env var with your Stadia Maps API key before rendering.")
+}
+
+tiles <- get_tiles(
+  villages_sf,
+  provider = "Stadia.AlidadeSmooth",
+  zoom = 12,
+  api_key = stadia_key
+)
+
+ggplot() +
+  tidyterra::geom_spatraster(data = tiles) +
+  scale_fill_manual(values = NA) +  # avoid legend for basemap raster
+  geom_sf(data = income_map, aes(fill = mean_class), color = NA, alpha = 0.4) +
+  scale_fill_manual(
+    values = c("Low" = "#d4eac7", "Mid" = "#74c476", "High" = "#006d2c"),
+    na.value = "gray80",
+    name = "Mean income (tercile)"
+  ) +
+  geom_sf_label(
+    data = top3,
+    aes(label = paste0(village, " (", round(mean_income_calc, 1), ")")),
+    nudge_y = y_range * 0.08,
+    size = 3,
+    label.size = 0
+  ) +
+  geom_sf_label(
+    data = bottom3,
+    aes(label = paste0(village, " (", round(mean_income_calc, 1), ")")),
+    nudge_y = -y_range * 0.08,
+    size = 3,
+    label.size = 0
+  ) +
+  coord_sf(clip = "off") +
+  labs(
+    title = "New Taipei: Mean Income per Household with Stadia Basemap",
+    subtitle = "Stadia Maps Alidade Smooth basemap with income terciles overlay (alpha = 0.4)"
+  ) +
   theme_void() +
   theme(
     legend.position = "right",
