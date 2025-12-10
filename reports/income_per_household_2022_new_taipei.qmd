@@ -208,7 +208,7 @@ tiles <- get_tiles(
   villages_sf,
   provider = "Stadia.AlidadeSmooth",
   zoom = 12,
-  api_key = stadia_key
+  apikey = stadia_key
 )
 
 ggplot() +
