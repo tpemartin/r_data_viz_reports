@@ -13,6 +13,10 @@ Data visualization workflows in R for municipal- and village-level datasets. The
 - `scripts/` R scripts for cleaning/visuals.
 - `reports/` Quarto reports (e.g., `progress_tracking.qmd`).
 
+## Templates (required for new files)
+- All new Quarto files (`.qmd`) must start from `templates/template.qmd` (e.g., `cp templates/template.qmd reports/<name>.qmd`) to preserve the root-dir chunk and font setup.
+- If you add other template types under `templates/`, adopt the matching template for any new file of that type and document the convention in `templates/README.md`.
+
 ## Usage
 - Render the current progress report: `quarto render reports/progress_tracking.qmd`.
 - Adjust data paths in scripts/reports if adding new raw sources under `data/raw/`.

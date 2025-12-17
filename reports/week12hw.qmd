@@ -1,0 +1,374 @@
+---
+title: "week12hw"
+format: html
+execute-dir: project
+---
+
+```{r}
+#| label: setup
+knitr::opts_knit$set(
+  root.dir = rprojroot::find_rstudio_root_file()
+)
+
+```
+
+
+```{r}
+#| include: false
+# Font setup for Chinese characters
+library(showtext)
+library(sysfonts)
+
+sysfonts::font_add(
+  family = "noto_tc",
+  regular = "font/NotoSansTC-Regular.ttf"
+)
+
+showtext::showtext_auto()
+
+ggplot2::theme_set(
+  ggplot2::theme_minimal(base_family = "noto_tc")
+)
+```
+
+
+```{r b1}
+library(tidyverse)
+
+# assume data already aggregated to weekday × hour level
+# columns: weekday (chr), hour (int), orders (int)
+
+tidy_orders <- tibble::tribble(
+  ~weekday, ~hour, ~orders,
+  "星期一", 23, 409,  "星期二", 23, 381,  "星期三", 23, 428,  "星期四", 23, 390,  "星期五", 23, 362,  "星期六", 23, 422,  "星期日", 23, 370,
+  "星期一", 22, 728,  "星期二", 22, 798,  "星期三", 22, 791,  "星期四", 22, 783,  "星期五", 22, 762,  "星期六", 22, 789,  "星期日", 22, 790,
+  "星期一", 21, 1215, "星期二", 21, 1166, "星期三", 21, 1109, "星期四", 21, 1142, "星期五", 21, 1107, "星期六", 21, 1171, "星期日", 21, 1193,
+  "星期一", 20, 1418, "星期二", 20, 1372, "星期三", 20, 1412, "星期四", 20, 1364, "星期五", 20, 1371, "星期六", 20, 1380, "星期日", 20, 1313,
+  "星期一", 19, 1564, "星期二", 19, 1596, "星期三", 19, 1565, "星期四", 19, 1547, "星期五", 19, 1576, "星期六", 19, 1559, "星期日", 19, 1640,
+  "星期一", 18, 1835, "星期二", 18, 1763, "星期三", 18, 1789, "星期四", 18, 1687, "星期五", 18, 1767, "星期六", 18, 1800, "星期日", 18, 1756,
+  "星期一", 17, 1578, "星期二", 17, 1539, "星期三", 17, 1606, "星期四", 17, 1583, "星期五", 17, 1542, "星期六", 17, 1604, "星期日", 17, 1592,
+  "星期一", 16, 1394, "星期二", 16, 1329, "星期三", 16, 1394, "星期四", 16, 1357, "星期五", 16, 1409, "星期六", 16, 1356, "星期日", 16, 1394,
+  "星期一", 15, 1166, "星期二", 15, 1198, "星期三", 15, 1170, "星期四", 15, 1227, "星期五", 15, 1156, "星期六", 15, 1168, "星期日", 15, 1117,
+  "星期一", 14, 1006, "星期二", 14, 1003, "星期三", 14, 963,  "星期四", 14, 987,  "星期五", 14, 1043, "星期六", 14, 1036, "星期日", 14, 993,
+  "星期一", 13, 744,  "星期二", 13, 753,  "星期三", 13, 793,  "星期四", 13, 786,  "星期五", 13, 795,  "星期六", 13, 805,  "星期日", 13, 794,
+  "星期一", 12, 1000, "星期二", 12, 994,  "星期三", 12, 1029, "星期四", 12, 1001, "星期五", 12, 1021, "星期六", 12, 993,  "星期日", 12, 968,
+  "星期一", 11, 1207, "星期二", 11, 1140, "星期三", 11, 1161, "星期四", 11, 1236, "星期五", 11, 1266, "星期六", 11, 1186, "星期日", 11, 1194,
+  "星期一", 10, 1335, "星期二", 10, 1391, "星期三", 10, 1326, "星期四", 10, 1338, "星期五", 10, 1374, "星期六", 10, 1408, "星期日", 10, 1405,
+  "星期一", 9, 1204,  "星期二", 9, 1141,  "星期三", 9, 1214,  "星期四", 9, 1148,  "星期五", 9, 1168,  "星期六", 9, 1158,  "星期日", 9, 1201,
+  "星期一", 8, 1026,  "星期二", 8, 1026,  "星期三", 8, 942,   "星期四", 8, 937,   "星期五", 8, 984,   "星期六", 8, 965,   "星期日", 8, 981,
+  "星期一", 7, 770,   "星期二", 7, 795,   "星期三", 7, 775,   "星期四", 7, 774,   "星期五", 7, 766,   "星期六", 7, 776,   "星期日", 7, 794,
+  "星期一", 6, 594,   "星期二", 6, 626,   "星期三", 6, 621,   "星期四", 6, 575,   "星期五", 6, 585,   "星期六", 6, 593,   "星期日", 6, 566,
+  "星期一", 5, 446,   "星期二", 5, 418,   "星期三", 5, 369,   "星期四", 5, 396,   "星期五", 5, 379,   "星期六", 5, 412,   "星期日", 5, 366,
+  "星期一", 4, 183,   "星期二", 4, 185,   "星期三", 4, 185,   "星期四", 4, 170,   "星期五", 4, 204,   "星期六", 4, 201,   "星期日", 4, 193,
+  "星期一", 3, 203,   "星期二", 3, 206,   "星期三", 3, 180,   "星期四", 3, 197,   "星期五", 3, 203,   "星期六", 3, 190,   "星期日", 3, 204,
+  "星期一", 2, 206,   "星期二", 2, 206,   "星期三", 2, 195,   "星期四", 2, 186,   "星期五", 2, 190,   "星期六", 2, 174,   "星期日", 2, 182,
+  "星期一", 1, 209,   "星期二", 1, 186,   "星期三", 1, 188,   "星期四", 1, 197,   "星期五", 1, 187,   "星期六", 1, 201,   "星期日", 1, 192,
+  "星期一", 0, 204,   "星期二", 0, 179,   "星期三", 0, 208,   "星期四", 0, 207,   "星期五", 0, 180,   "星期六", 0, 195,   "星期日", 0, 200
+)
+
+tidy_orders |>
+  mutate(
+    weekday = factor(
+      weekday,
+      levels = c("星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日")
+    )
+  ) |>
+  ggplot(aes(x = weekday, y = hour, fill = orders)) +
+  geom_tile(color = "white", linewidth = 0.5) +
+  geom_text(aes(label = orders), size = 3) +
+  scale_fill_viridis_c(name = "訂單數量") +
+  scale_y_continuous(breaks = 0:23) +
+  labs(
+    title = "叫車需求熱力圖：星期 vs 時段",
+    subtitle = "分析顯示通勤時段 (17:00–20:00) 為每週主要需求高峰",
+    x = "星期",
+    y = "小時 (24小時制)",
+    caption = "資料來源：Kaggle NCR Ride Bookings Dataset"
+  ) +
+  theme_minimal() +
+  theme(
+    panel.grid = element_blank(),
+    plot.title = element_text(face = "bold")
+  )
+
+```
+
+```{r a1}
+tidy_orders |>
+  mutate(
+    weekday = factor(
+      weekday,
+      levels = c("星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日")
+    ),
+    label_color = if_else(orders < 1000, "white", "black")
+  ) |>
+  ggplot(aes(x = weekday, y = hour, fill = orders)) +
+  geom_tile(color = "white", linewidth = 0.5) +
+  geom_text(aes(label = orders, color = label_color), size = 3) +
+  scale_color_identity() +
+  scale_fill_viridis_c(name = "訂單數量") +
+  scale_y_continuous(breaks = 0:23) +
+  labs(
+    title = "叫車需求熱力圖：星期 vs 時段",
+    subtitle = "分析顯示通勤時段 (17:00–20:00) 為每週主要需求高峰",
+    x = "星期",
+    y = "小時 (24小時制)",
+    caption = "資料來源：Kaggle NCR Ride Bookings Dataset"
+  ) +
+  theme_minimal() +
+  theme(
+    panel.grid = element_blank(),
+    plot.title = element_text(face = "bold")
+  )
+
+```
+
+```{r b2}
+library(tidyverse)
+library(treemapify)
+
+# assume data already aggregated
+# columns:
+# district (chr) 行政區
+# cause (chr) 起火原因
+# cases (int) 火災次數
+
+tidy_fire <- tibble::tribble(
+  ~district, ~cause,       ~cases,
+  "淡水區", "電氣",          5,
+  "淡水區", "遺留火種",      2,
+  "淡水區", "雜草垃圾",      7,
+  "淡水區", "其他",          1,
+
+  "三重區", "遺留火種",      7,
+  "三重區", "電氣",          5,
+  "三重區", "雜草垃圾",      2,
+  "三重區", "焚火",          2,
+  "三重區", "其他",          1,
+
+  "新莊區", "電氣",          5,
+  "新莊區", "遺留火種",      2,
+  "新莊區", "雜草垃圾",      1,
+  "新莊區", "焚火",          1,
+  "新莊區", "縱火",          1,
+  "新莊區", "菸蒂",          1,
+
+  "中和區", "電氣",          3,
+  "中和區", "雜草垃圾",      4,
+  "中和區", "遺留火種",      2,
+  "中和區", "菸蒂",          1,
+  "中和區", "敬神",          1,
+  "中和區", "其他",          1,
+
+  "板橋區", "電氣",          1,
+  "板橋區", "焚火",          1,
+  "板橋區", "縱火",          1,
+  "板橋區", "菸蒂",          1,
+  "板橋區", "瓦斯",          1,
+  "板橋區", "雜草垃圾",      2,
+  "板橋區", "遺留火種",      1,
+  "板橋區", "其他",          1
+)
+
+tidy_fire |>
+  ggplot(aes(
+    area = cases,
+    fill = district,
+    label = paste0(cause, "\n", cases),
+    subgroup = district
+  )) +
+  geom_treemap(color = "white", linewidth = 0.8) +
+  geom_treemap_subgroup_border(color = "white", linewidth = 1.2) +
+  geom_treemap_text(
+    colour = "black",
+    place = "centre",
+    grow = TRUE,
+    reflow = TRUE
+  ) +
+  geom_treemap_subgroup_text(
+    place = "centre",
+    grow = TRUE,
+    alpha = 0.25,
+    colour = "black"
+  ) +
+  labs(
+    title = "歷年新北市前五大火災熱區：行政區與起火原因之關聯分析",
+    subtitle = "圖表面積代表比例，矩形中的數字代表該原因引起火災次數",
+    caption = "資料來源：新北市政府消防局"
+  ) +
+  theme_void() +
+  theme(
+    plot.title = element_text(face = "bold", size = 16),
+    plot.subtitle = element_text(size = 11),
+    plot.caption = element_text(hjust = 1)
+  )
+
+```
+
+```{r c1}
+library(tidyverse)
+library(sf)
+
+# assume:
+# 1. taiwan_sf : sf polygon of Taiwan (TWD97, EPSG:3826)
+# 2. reservoir_df : point data already summarised to median TP
+#    columns: reservoir, lon, lat, tp_median
+
+# example structure (DO NOT create if already in global env)
+reservoir_df <- tibble(
+  reservoir = c("石門", "翡翠", "曾文"),
+  lon = c(121000, 121300, 120600),
+  lat = c(2490000, 2475000, 2550000),
+  tp_median = c(0.04, 0.06, 0.09)
+)
+
+reservoir_sf <- reservoir_df |>
+  st_as_sf(
+    coords = c("lon", "lat"),
+    crs = 3826
+  )
+
+ggplot() +
+  geom_sf(
+    data = taiwan_sf,
+    fill = "grey85",
+    color = "white",
+    linewidth = 0.6
+  ) +
+  geom_sf(
+    data = reservoir_sf,
+    aes(color = tp_median),
+    size = 6,
+    alpha = 0.85
+  ) +
+  scale_color_gradient(
+    low = "#9FA8DA",
+    high = "#283593",
+    name = "總磷中位數\n(mg/L)"
+  ) +
+  coord_sf() +
+  labs(
+    title = "水庫總磷中位數地理熱點圖",
+    subtitle = "顏色越深，代表總磷濃度越高",
+    x = "經度 (TWD97 Lon)",
+    y = "緯度 (TWD97 Lat)",
+    caption = "資料來源：環境部"
+  ) +
+  theme_minimal() +
+  theme(
+    panel.grid.major = element_line(color = "grey80"),
+    panel.grid.minor = element_blank(),
+    plot.title = element_text(face = "bold", size = 16),
+    plot.subtitle = element_text(size = 11),
+    legend.title = element_text(size = 10),
+    legend.text = element_text(size = 9)
+  )
+
+```
+
+```{r}
+library(tidyverse)
+
+# assume data already aggregated
+# columns:
+# year (chr or int): 2022, 2023, 2024
+# month (int): 1–12
+# rain_days (int): number of rainy days in the month
+
+rain_df <- tibble::tribble(
+  ~year, ~month, ~rain_days,
+  2024, 1, 15,  2024, 2, 14,  2024, 3, 17,  2024, 4, 23,
+  2024, 5, 18,  2024, 6, 24,  2024, 7, 19,  2024, 8, 17,
+  2024, 9, 17,  2024,10, 24,  2024,11, 22,  2024,12, 18,
+
+  2023, 1, 20,  2023, 2, 17,  2023, 3, 11,  2023, 4, 15,
+  2023, 5, 18,  2023, 6, 14,  2023, 7, 16,  2023, 8, 16,
+  2023, 9, 13,  2023,10, 17,  2023,11, 14,  2023,12, 21,
+
+  2022, 1, 25,  2022, 2, 23,  2022, 3, 13,  2022, 4, 19,
+  2022, 5, 26,  2022, 6, 16,  2022, 7, 12,  2022, 8, 16,
+  2022, 9, 15,  2022,10, 23,  2022,11, 17,  2022,12, 22
+)
+
+avg_df <- rain_df |>
+  group_by(month) |>
+  summarise(
+    rain_days = mean(rain_days),
+    .groups = "drop"
+  ) |>
+  mutate(year = "平均")
+
+bind_rows(rain_df |> mutate(year = as.character(year)), avg_df) |>
+  ggplot(aes(x = month, y = rain_days, color = year, linetype = year)) +
+  geom_line(linewidth = 1.2) +
+  geom_point(size = 3) +
+  scale_x_continuous(breaks = 1:12) +
+  scale_linetype_manual(
+    values = c("2022" = "solid", "2023" = "solid", "2024" = "solid", "平均" = "dashed")
+  ) +
+  labs(
+    title = "近三年每月下雨天數趨勢與平均比較",
+    subtitle = "冬季降雨天數是否較高？",
+    x = "月份",
+    y = "下雨天數",
+    caption = "交通部中央氣象署"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(face = "bold", size = 16),
+    legend.title = element_blank(),
+    panel.grid.minor = element_blank()
+  )
+
+```
+
+```{r}
+library(tidyverse)
+
+# assume rain_df already exists
+# columns: year, month, rain_days
+
+rain_demean_df <- rain_df |>
+  group_by(year) |>
+  mutate(
+    year_mean = mean(rain_days),
+    rain_days_demean = rain_days - year_mean
+  ) |>
+  ungroup()
+
+avg_demean_df <- rain_demean_df |>
+  group_by(month) |>
+  summarise(
+    rain_days_demean = mean(rain_days_demean),
+    .groups = "drop"
+  ) |>
+  mutate(year = "平均")
+
+bind_rows(
+  rain_demean_df |> mutate(year = as.character(year)),
+  avg_demean_df
+) |>
+  ggplot(aes(x = month, y = rain_days_demean, color = year, linetype = year)) +
+  geom_hline(yintercept = 0, linewidth = 0.6, color = "grey50") +
+  geom_line(linewidth = 1.2) +
+  geom_point(size = 3) +
+  scale_x_continuous(breaks = 1:12) +
+  scale_linetype_manual(
+    values = c("2022" = "solid", "2023" = "solid", "2024" = "solid", "平均" = "dashed")
+  ) +
+  labs(
+    title = "近三年每月下雨天數（扣除各年全年平均）",
+    subtitle = "以 0 為該年度平均，下方為偏少、上方為偏多",
+    x = "月份",
+    y = "相對下雨天數（去平均）",
+    caption = "交通部中央氣象署"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(face = "bold", size = 16),
+    legend.title = element_blank(),
+    panel.grid.minor = element_blank()
+  )
+
+```
+

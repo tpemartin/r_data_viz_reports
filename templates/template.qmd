@@ -1,0 +1,33 @@
+---
+title: "template"
+execute-dir: project
+format: html
+---
+
+```{r}
+#| label: setup
+knitr::opts_knit$set(
+  root.dir = rprojroot::find_rstudio_root_file()
+)
+```
+
+
+```{r}
+#| include: false
+# Font setup for Chinese characters
+library(showtext)
+library(sysfonts)
+
+# Change your font file path if needed
+sysfonts::font_add(
+  family = "noto_tc",
+  regular = "font/NotoSansTC-Regular.ttf" # path to your font file
+)
+
+showtext::showtext_auto()
+
+ggplot2::theme_set(
+  ggplot2::theme_minimal(base_family = "noto_tc")
+)
+```
+

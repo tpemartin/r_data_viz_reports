@@ -1,0 +1,153 @@
+---
+title: "week15"
+format: html
+execute-dir: project
+---
+
+```{r}
+knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
+
+
+
+```
+
+
+```{r}
+library(showtext)
+library(sysfonts)
+
+sysfonts::font_add(
+  family = "noto_tc",
+  regular = "font/NotoSansTC-Regular.ttf"
+)
+
+showtext::showtext_auto()
+
+ggplot2::theme_set(
+  ggplot2::theme_minimal(base_family = "noto_tc")
+)
+
+```
+
+```{r}
+# Setup
+library(dplyr)
+library(readr)
+library(ggplot2)
+library(stringr)
+```
+
+## Load data
+
+Read the New Taipei village income CSV (UTF-8 BOM) and keep the English headers from the codebook.
+
+```{r}
+income_path <- "data/income_distribution_by_village_2022_newTaipei.csv"
+income_raw <- read.csv(income_path, check.names = FALSE, fileEncoding = "UTF-8-BOM")
+
+glimpse_income <- tibble::tibble(
+  rows = nrow(income_raw),
+  cols = ncol(income_raw),
+  first_region = income_raw$`Region Name`[1]
+)
+glimpse_income
+```
+
+## Clean and enrich
+
+Rename to snake_case, add a district field (strip the leading "新北市"), and recompute the mean income to verify the reported value.
+
+```{r}
+income_ntpc <- income_raw %>%
+  rename(
+    region = `Region Name`,
+    village = `Village Name`,
+    tax_units = `Tax Units (Households)`,
+    total_income = `Total Comprehensive Income`,
+    mean_income_reported = `Mean Income`,
+    median_income = `Median Income`,
+    p25_income = `1st Quartile Income`,
+    p75_income = `3rd Quartile Income`,
+    sd_income = `Standard Deviation`,
+    cv_income = `Coefficient of Variation`
+  ) %>%
+  mutate(
+    district = str_remove(region, "^新北市"),
+    mean_income_calc = total_income / tax_units,
+    mean_diff = mean_income_reported - mean_income_calc
+  )
+
+income_ntpc %>%
+  summarize(
+    villages = n(),
+    districts = n_distinct(district),
+    tax_units_total = sum(tax_units),
+    total_income_sum = sum(total_income),
+    mean_abs_diff = mean(abs(mean_diff), na.rm = TRUE),
+    max_abs_diff = max(abs(mean_diff), na.rm = TRUE)
+  )
+```
+
+## Village-level extremes (reported mean)
+
+```{r}
+top_villages <- income_ntpc %>%
+  arrange(desc(mean_income_reported)) %>%
+  select(region, village, tax_units, mean_income_reported) %>%
+  slice_head(n = 10)
+
+bottom_villages <- income_ntpc %>%
+  arrange(mean_income_reported) %>%
+  select(region, village, tax_units, mean_income_reported) %>%
+  slice_head(n = 10)
+
+top_villages
+bottom_villages
+```
+
+## Distribution of mean income (village level)
+
+```{r}
+ggplot(income_ntpc, aes(x = mean_income_reported)) +
+  geom_histogram(bins = 40, fill = "#5e82c2", color = "white") +
+  geom_vline(aes(xintercept = mean(mean_income_reported)), linetype = "dashed", color = "#1b4f72") +
+  geom_vline(aes(xintercept = median(mean_income_reported)), linetype = "dotted", color = "#a93226") +
+  labs(
+    title = "Distribution of Mean Comprehensive Income per Household",
+    subtitle = "Village-level, New Taipei (2022)",
+    x = "Mean income (unit per source; likely thousand NTD)",
+    y = "Villages"
+  ) +
+  theme_minimal()
+```
+
+## District summary (mean of village means)
+
+```{r}
+district_summary <- income_ntpc %>%
+  group_by(district) %>%
+  summarize(
+    villages = n(),
+    mean_of_mean = mean(mean_income_reported),
+    median_of_mean = median(mean_income_reported),
+    max_mean = max(mean_income_reported),
+    min_mean = min(mean_income_reported)
+  ) %>%
+  arrange(desc(mean_of_mean))
+
+district_summary
+```
+
+### Boxplot by district
+
+```{r}
+ggplot(income_ntpc, aes(x = reorder(district, mean_income_reported, FUN = median), y = mean_income_reported)) +
+  geom_boxplot(outlier.alpha = 0.4, fill = "#b5cda3") +
+  coord_flip() +
+  labs(
+    title = "Village Mean Income by District",
+    x = "District",
+    y = "Mean income (reported)"
+  ) +
+  theme_minimal(base_family = "noto_tc")
+```

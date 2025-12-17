@@ -29,14 +29,25 @@ library(readr)
 library(sf)
 library(ggplot2)
 library(stringr)
-library(maptiles)
-library(tidyterra)
+library(ggmap)
 if (!requireNamespace("showtext", quietly = TRUE)) {
   stop("Please install showtext: install.packages('showtext')")
 }
 library(showtext)
 font_add("Noto Sans TC", "../font/NotoSansTC-Regular.ttf")
 showtext_auto()
+
+# Ensure PROJ can find proj.db (try common Homebrew paths)
+proj_candidates <- c(
+  "/opt/homebrew/share/proj",
+  "/usr/local/share/proj",
+  "/opt/homebrew/opt/proj/share/proj",
+  "/usr/local/opt/proj/share/proj"
+)
+proj_path <- proj_candidates[file.exists(file.path(proj_candidates, "proj.db"))][1]
+if (!is.na(proj_path)) {
+  Sys.setenv(PROJ_LIB = proj_path)
+}
 ```
 
 ## Load data
@@ -120,6 +131,7 @@ Use the official village boundaries shapefile, keep only New Taipei, join on `CO
 ```{r}
 shp_path <- "../data/raw/村(里)界(TWD97經緯度)1141031/VILLAGE_NLSC_11401031.shp"
 villages_sf <- st_read(shp_path, quiet = TRUE) %>%
+  st_transform(3824) %>%  # GCS_TWD97[2020] / EPSG:3824
   filter(COUNTYNAME == "新北市") %>%
   mutate(join_key = paste0(COUNTYNAME, TOWNNAME, VILLNAME))
 
@@ -194,51 +206,51 @@ ggplot(income_map) +
   )
 ```
 
-## Basemap overlay (Stadia Maps Alidade Smooth + choropleth)
-
-Requires internet access and a Stadia API key set as env var `STADIA_KEY`. Tiles are fetched via `{maptiles}` and overlaid with the same mean-income terciles (alpha = 0.4).
+### Top 3 villages only
 
 ```{r}
-stadia_key <- Sys.getenv("STADIA_KEY")
-if (stadia_key == "") {
-  stop("Set STADIA_KEY env var with your Stadia Maps API key before rendering.")
-}
+library(ggplot2)
+library(dplyr)
+library(sf)
 
-tiles <- get_tiles(
-  villages_sf,
-  provider = "Stadia.AlidadeSmooth",
-  zoom = 12,
-  apikey = stadia_key
-)
+# [Logic Preserved] Calculate range for label nudging
+y_range <- diff(range(st_bbox(income_map)[c("ymin", "ymax")]))
 
-ggplot() +
-  tidyterra::geom_spatraster(data = tiles) +
-  scale_fill_manual(values = NA) +  # avoid legend for basemap raster
-  geom_sf(data = income_map, aes(fill = mean_class), color = NA, alpha = 0.4) +
+# [Logic Preserved] Define labels for Top 3 (Centroids)
+top3 <- income_map %>%
+  filter(!is.na(mean_income_calc)) %>%
+  arrange(desc(mean_income_calc)) %>%
+  slice_head(n = 3) %>%
+  st_centroid()
+
+# [New] Define Polygons for Top 3 (for the Choropleth)
+# We need the actual geometry, not just centroids, to draw the map
+top3_poly <- income_map %>%
+  filter(!is.na(mean_income_calc)) %>%
+  arrange(desc(mean_income_calc)) %>%
+  slice_head(n = 3)
+
+# [Plot] Use top3_poly as the main data source
+ggplot(top3_poly) +
+  geom_sf(aes(fill = mean_class), color = NA) +
   scale_fill_manual(
     values = c("Low" = "#d4eac7", "Mid" = "#74c476", "High" = "#006d2c"),
-    na.value = "gray80",
+    na.value = "gray90",
     name = "Mean income (tercile)"
   ) +
+  # Only keeping the Top 3 labels
   geom_sf_label(
     data = top3,
     aes(label = paste0(village, " (", round(mean_income_calc, 1), ")")),
-    nudge_y = y_range * 0.08,
+    nudge_y = y_range * 0.008,
     size = 3,
     label.size = 0
   ) +
-  geom_sf_label(
-    data = bottom3,
-    aes(label = paste0(village, " (", round(mean_income_calc, 1), ")")),
-    nudge_y = -y_range * 0.08,
-    size = 3,
-    label.size = 0
+  labs(
+    title = "New Taipei: Mean Comprehensive Income per Household (2022)",
+    subtitle = "Top 3 Villages by calculated mean income"
   ) +
   coord_sf(clip = "off") +
-  labs(
-    title = "New Taipei: Mean Income per Household with Stadia Basemap",
-    subtitle = "Stadia Maps Alidade Smooth basemap with income terciles overlay (alpha = 0.4)"
-  ) +
   theme_void() +
   theme(
     legend.position = "right",
@@ -247,3 +259,163 @@ ggplot() +
     text = element_text(family = "Noto Sans TC")
   )
 ```
+### Overlay Stadia map
+
+```{r}
+library(ggplot2)
+library(dplyr)
+library(sf)
+library(ggmap) # Using ggmap as requested
+
+# --- SETUP STADIA MAPS ---
+# You MUST register your API key for this to work.
+# register_stadiamaps("YOUR_API_KEY_HERE", write = FALSE)
+
+# 1. Transform data to WGS84 (EPSG:4326) required for ggmap
+# We transform the whole map first to get the correct subset
+income_map_wgs84 <- st_transform(income_map, 4326)
+
+# 2. Filter Top 3 Data (Polygons & Labels)
+top3_poly <- income_map_wgs84 %>%
+  filter(!is.na(mean_income_calc)) %>%
+  arrange(desc(mean_income_calc)) %>%
+  slice_head(n = 3)
+
+top3_labels <- top3_poly %>%
+  st_centroid()
+
+# 3. Define Bounding Box for the Basemap
+# Add a small buffer so the polygons aren't cut off at the edge
+bbox <- st_bbox(top3_poly)
+names(bbox) <- c("left", "bottom", "right", "top") # ggmap naming convention
+# Expand box slightly (optional, prevents tight cropping)
+bbox_expanded <- bbox
+bbox_expanded["left"] <- bbox["left"] - 0.01
+bbox_expanded["right"] <- bbox["right"] + 0.01
+bbox_expanded["bottom"] <- bbox["bottom"] - 0.01
+bbox_expanded["top"] <- bbox["top"] + 0.01
+
+# 4. Fetch the Stadia Map
+# Note: zoom needs to be tweaked based on the size of your area. 
+# 12 is usually city-wide, 14 is district level.
+basemap <- get_stadiamap(
+  bbox = bbox_expanded, 
+  maptype = "stamen_toner_lite", 
+  zoom = 13,
+  force = TRUE
+)
+```
+
+
+```{r}
+
+# 5. Plot
+ggmap(basemap) +
+  # inherit.aes = FALSE is crucial when mixing ggmap + sf
+  geom_sf(data = top3_poly, aes(fill = mean_class), color = NA, alpha = 0.85, inherit.aes = FALSE) +
+  scale_fill_manual(
+    values = c("Low" = "#d4eac7", "Mid" = "#74c476", "High" = "#006d2c"),
+    na.value = "gray90",
+    name = "Mean income (tercile)"
+  ) +
+  geom_sf_label(
+    data = top3_labels,
+    aes(label = paste0(village, "\n(", round(mean_income_calc, 1), ")")),
+    # Nudging in ggmap (lat/lon) requires much smaller values than projected coords
+    nudge_y = 0.005, 
+    size = 3,
+    label.size = 0,
+    inherit.aes = FALSE
+  ) +
+  labs(
+    title = "New Taipei: Mean Comprehensive Income per Household (2022)",
+    subtitle = "Top 3 Villages (Stamen Toner Lite via ggmap)"
+  ) +
+  # coordinate system is handled by ggmap, but we can turn off clip
+  coord_sf(clip = "off") + 
+  theme_void() +
+  theme(
+    legend.position = "right",
+    plot.title = element_text(face = "bold"),
+    plot.margin = margin(10, 30, 10, 30),
+    text = element_text(family = "Noto Sans TC")
+  )
+```
+### Overlay Google Maps
+
+```{r}
+library(ggplot2)
+library(dplyr)
+library(sf)
+library(ggmap)
+
+# --- STEP 0: REGISTER GOOGLE API KEY ---
+# 1. Get key at: https://console.cloud.google.com/
+# 2. Enable "Maps Static API"
+# 3. Paste key below:
+# register_google(key = "YOUR_GOOGLE_API_KEY", write = FALSE)
+
+# --- STEP 1: Process Data (Projected CRS) ---
+top3_poly_projected <- income_map %>%
+  filter(!is.na(mean_income_calc)) %>%
+  arrange(desc(mean_income_calc)) %>%
+  slice_head(n = 3)
+
+top3_labels_projected <- st_centroid(top3_poly_projected)
+
+# --- STEP 2: Transform to WGS84 ---
+top3_poly_wgs84   <- st_transform(top3_poly_projected, 4326)
+top3_labels_wgs84 <- st_transform(top3_labels_projected, 4326)
+
+# --- STEP 3: Define Center & Zoom ---
+# Google Maps works best with a center point + zoom level, rather than a bbox
+center_point <- st_coordinates(st_centroid(st_union(top3_poly_wgs84)))
+mean_lon <- center_point[1]
+mean_lat <- center_point[2]
+
+# --- STEP 4: Fetch Google Map ---
+gmap_base <- get_googlemap(
+  center = c(lon = mean_lon, lat = mean_lat),
+  zoom = 13,          # Adjust: 12 (City), 13 (District), 14 (Detailed)
+  maptype = "roadmap", # Options: "roadmap", "satellite", "hybrid", "terrain"
+  style = "feature:all|element:labels|visibility:off" # Optional: Turns off Google's own labels to reduce clutter
+)
+
+# --- STEP 5: Plot ---
+ggmap(gmap_base) +
+  geom_sf(
+    data = top3_poly_wgs84, 
+    aes(fill = mean_class), 
+    color = "black",
+    size = 0.5,
+    alpha = 0.7, 
+    inherit.aes = FALSE
+  ) +
+  scale_fill_manual(
+    values = c("Low" = "#d4eac7", "Mid" = "#74c476", "High" = "#006d2c"),
+    na.value = "gray90",
+    name = "Mean income (tercile)"
+  ) +
+  geom_sf_label(
+    data = top3_labels_wgs84,
+    aes(label = paste0(village, "\n(", round(mean_income_calc, 1), ")")),
+    nudge_y = 0.003, # Google Maps zoom requires fine-tuning nudge
+    size = 3,
+    label.size = 0,
+    fontface = "bold",
+    inherit.aes = FALSE
+  ) +
+  labs(
+    title = "New Taipei: Mean Comprehensive Income per Household (2022)",
+    subtitle = "Top 3 Villages (Google Maps Background)"
+  ) +
+  coord_sf(clip = "off") +
+  theme_void() +
+  theme(
+    legend.position = "right",
+    plot.title = element_text(face = "bold"),
+    plot.margin = margin(10, 30, 10, 30),
+    text = element_text(family = "Noto Sans TC")
+  )
+```
+
