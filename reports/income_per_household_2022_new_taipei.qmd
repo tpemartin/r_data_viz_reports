@@ -1,25 +1,37 @@
 ---
 title: "New Taipei Income per Household (Tax Year 2022)"
 author: "User"
-format:
-  html:
-    toc: false
-header-includes:
-  - |
-    <style>
-    @font-face {
-      font-family: 'Noto Sans TC';
-      src: url('../font/NotoSansTC-Regular.ttf') format('truetype');
-      font-weight: 400;
-      font-style: normal;
-    }
-    body {
-      font-family: 'Noto Sans TC', 'Noto Sans', sans-serif;
-    }
-    </style>
+execute-dir: project
+format: html
 ---
 
-This notebook documents how the per-village average comprehensive income per household is calculated from `data/income_distribution_by_village_2022_newTaipei.csv` (see codebook: `codebook/income_distribution_by_village_2022_newTaipei.md`).
+```{r}
+#| label: setup
+knitr::opts_knit$set(
+  root.dir = rprojroot::find_rstudio_root_file()
+)
+```
+
+
+```{r}
+#| include: false
+# Font setup for Chinese characters
+library(showtext)
+library(sysfonts)
+
+# Change your font file path if needed
+sysfonts::font_add(
+  family = "noto_tc",
+  regular = "font/NotoSansTC-Regular.ttf" # path to your font file
+)
+
+showtext::showtext_auto()
+
+ggplot2::theme_set(
+  ggplot2::theme_minimal(base_family = "noto_tc")
+)
+```
+
 
 ## Setup
 
@@ -30,24 +42,6 @@ library(sf)
 library(ggplot2)
 library(stringr)
 library(ggmap)
-if (!requireNamespace("showtext", quietly = TRUE)) {
-  stop("Please install showtext: install.packages('showtext')")
-}
-library(showtext)
-font_add("Noto Sans TC", "../font/NotoSansTC-Regular.ttf")
-showtext_auto()
-
-# Ensure PROJ can find proj.db (try common Homebrew paths)
-proj_candidates <- c(
-  "/opt/homebrew/share/proj",
-  "/usr/local/share/proj",
-  "/opt/homebrew/opt/proj/share/proj",
-  "/usr/local/opt/proj/share/proj"
-)
-proj_path <- proj_candidates[file.exists(file.path(proj_candidates, "proj.db"))][1]
-if (!is.na(proj_path)) {
-  Sys.setenv(PROJ_LIB = proj_path)
-}
 ```
 
 ## Load data
@@ -55,7 +49,7 @@ if (!is.na(proj_path)) {
 CSV includes a UTF-8 BOM; read with the matching encoding and keep the English headers provided in the codebook.
 
 ```{r}
-income_path <- "../data/income_distribution_by_village_2022_newTaipei.csv"
+income_path <- "data/income_distribution_by_village_2022_newTaipei.csv"
 income_raw <- read.csv(income_path, check.names = FALSE, fileEncoding = "UTF-8-BOM")
 
 dglimpse <- function(df) {
@@ -129,7 +123,7 @@ income_ntpc %>%
 Use the official village boundaries shapefile, keep only New Taipei, join on `COUNTYNAME + TOWNNAME + VILLNAME`, and classify the calculated mean income into terciles.
 
 ```{r}
-shp_path <- "../data/raw/村(里)界(TWD97經緯度)1141031/VILLAGE_NLSC_11401031.shp"
+shp_path <- "data/raw/村(里)界(TWD97經緯度)1141031/VILLAGE_NLSC_11401031.shp"
 villages_sf <- st_read(shp_path, quiet = TRUE) %>%
   st_transform(3824) %>%  # GCS_TWD97[2020] / EPSG:3824
   filter(COUNTYNAME == "新北市") %>%
